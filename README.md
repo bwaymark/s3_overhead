@@ -1,171 +1,211 @@
-# PiAware ADS-B Display for LilyGO T-Display S3
+# PiAware Display
 
-A live aircraft display for the [LilyGO T-Display S3](https://lilygo.cc/products/t-display-s3) (ESP32-S3 with built-in 1.9" LCD). Polls a local [PiAware](https://flightaware.com/adsb/piaware/) ADS-B receiver for nearby aircraft and enriches each flight with origin, destination, and airline data from the [FlightAware AeroAPI](https://www.flightaware.com/commercial/aeroapi/).
-
----
-
-## What it does
-
-- Lists up to 20 aircraft sorted by distance from your location
-- Shows callsign, altitude, distance (km), origin airport, destination airport, and airline
-- Caches up to 40 route lookups in RAM to avoid hammering the AeroAPI
-- Detail view (both buttons) shows a larger per-aircraft readout with position and cache status
-- Refreshes every 5 seconds; fetches one uncached route per cycle
+A live ADS-B aircraft display for the **LilyGO T-Display S3** (ESP32-S3). Reads aircraft data from a local PiAware / dump1090 receiver and looks up flight routes via the FlightAware AeroAPI.
 
 ---
 
-## Hardware required
+## What It Shows
 
-| Item | Notes |
-|------|-------|
-| LilyGO T-Display S3 | The 170×320 px variant. Not the original T-Display. |
-| Raspberry Pi running PiAware | Any Pi works; needs to be on the same local network |
-| ADS-B antenna + USB dongle | RTL-SDR or similar, connected to the Pi |
+**List view** — up to 7 nearest aircraft sorted by distance, showing:
+- Distance (km)
+- Flight number
+- Altitude
+- Origin and destination (IATA codes)
+- Airline name
+
+**Detail view** — full information on the selected aircraft:
+- Flight number (large)
+- Origin → Destination (large IATA codes)
+- Airline name
+- Altitude, distance, last seen
+- GPS position
+
+Route data is fetched from the FlightAware AeroAPI and cached on-device, so each flight is only looked up once.
 
 ---
 
-## Prerequisites
+## Controls
 
-### Arduino IDE
+| Action | Result |
+|--------|--------|
+| Button 14 | Scroll forward / next aircraft |
+| Button 0 | Scroll back / previous aircraft |
+| Both together | Toggle between list and detail view |
 
-1. Install [Arduino IDE 2.x](https://www.arduino.cc/en/software)
-2. Add the ESP32 board package. In **File → Preferences → Additional boards manager URLs**, add:
-   ```
-   https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-   ```
-3. Open **Tools → Board → Boards Manager**, search for `esp32`, install the Espressif package (2.x or later)
-4. Select board: **Tools → Board → ESP32S3 Dev Module**
+---
 
-### Libraries
+## Hardware
 
-Install all of these via **Sketch → Include Library → Manage Libraries**:
+- **LilyGO T-Display S3** — [LilyGO GitHub](https://github.com/Xinyuan-LilyGO/T-Display-S3)
+- **PiAware receiver** — a Raspberry Pi running [PiAware](https://www.flightaware.com/adsb/piaware/) with a DVB-T USB stick and antenna, on the same local network
+- USB-C cable for programming the T-Display S3
 
-| Library | Author | Notes |
-|---------|--------|-------|
-| TFT_eSPI | Bodmer | Display driver |
-| ArduinoJson | Benoit Blanchon | v6 or v7 |
+---
 
-**TFT_eSPI requires a User_Setup file.** After installing, find the library folder (usually `~/Documents/Arduino/libraries/TFT_eSPI/`) and copy in the T-Display S3 setup file:
+## Software Setup
 
-```
-cp docs/User_Setup.h ~/Documents/Arduino/libraries/TFT_eSPI/User_Setup.h
-```
+### 1. Arduino IDE
 
-A suitable `User_Setup.h` for the T-Display S3 is included in the `docs/` folder of this repo. If you already have a working TFT_eSPI setup for this board, skip this step.
+Install [Arduino IDE 2.x](https://www.arduino.cc/en/software).
 
-### PiAware
+### 2. ESP32 Board Package
 
-Follow the [FlightAware PiAware installation guide](https://flightaware.com/adsb/piaware/install). Once running, the JSON feed is available at:
+In Arduino IDE go to **File → Preferences** and add this to Additional Board Manager URLs:
 
 ```
-http://<your-pi-ip>:8080/data/aircraft.json
+https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 ```
 
-Check this URL in a browser before proceeding — you should see a JSON blob with an `aircraft` array.
+Then go to **Tools → Board → Boards Manager**, search for `esp32` and install version **2.0.14**.
 
-### AeroAPI key
+> ⚠️ Version 2.0.14 specifically — newer versions have compatibility issues with the T-Display S3.
 
-Sign up at [flightaware.com/commercial/aeroapi](https://www.flightaware.com/commercial/aeroapi/). The free tier provides a limited monthly allowance which is sufficient for casual use. Copy your API key from the dashboard.
+### 3. TFT_eSPI Library
+
+Download the LilyGO version of TFT_eSPI (not the Library Manager version):
+
+1. Go to [https://github.com/Xinyuan-LilyGO/T-Display-S3](https://github.com/Xinyuan-LilyGO/T-Display-S3)
+2. Download the repo as a ZIP
+3. Copy the `TFT_eSPI` folder into your Arduino libraries folder (`~/Documents/Arduino/libraries/`)
+4. Delete any existing TFT_eSPI folder first
+
+### 4. ArduinoJson Library
+
+In Arduino IDE go to **Tools → Manage Libraries**, search for `ArduinoJson` and install version **7.x** by Benoit Blanchon.
+
+### 5. Board Settings
+
+| Setting | Value |
+|---------|-------|
+| Board | ESP32S3 Dev Module |
+| Upload Speed | 921600 |
+| USB Mode | Hardware CDC and OTG |
+| USB CDC On Boot | Enabled |
+| Flash Mode | QIO 80MHz |
+| Flash Size | 16MB (128Mb) |
+| Partition Scheme | 16M Flash (3MB APP/9.9MB FATFS) |
+| PSRAM | OPI PSRAM |
 
 ---
 
 ## Configuration
 
-Open `src/piaware_lilygo.ino` and edit the block at the top of the file:
+Open `config.h` and fill in your values.
+
+### WiFi
 
 ```cpp
-const char* WIFI_SSID      = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD  = "YOUR_WIFI_PASSWORD";
-
-const char* PIAWARE_URL    = "http://192.168.X.X:8080/data/aircraft.json";
-
-const char* AEROAPI_KEY    = "YOUR_AEROAPI_KEY";
-
-const float HOME_LAT = 0.0000f;  // your latitude, decimal degrees
-const float HOME_LON = 0.0000f;  // your longitude, decimal degrees
+#define WIFI_SSID      "your-network-name"
+#define WIFI_PASSWORD  "your-password"
 ```
 
-To find your coordinates, right-click your location in Google Maps and copy the decimal values shown at the top of the context menu. Negative longitude = west of Greenwich.
-
-> **Do not commit the file after adding your credentials.** The `.gitignore` won't protect a modified `.ino` from being staged. If you fork this repo, consider moving credentials to a separate `secrets.h` file that is listed in `.gitignore`.
+The T-Display S3 only supports 2.4GHz networks.
 
 ---
 
-## Building and flashing
+### PiAware URL
 
-1. Open `src/piaware_lilygo.ino` in Arduino IDE
-2. Connect the T-Display S3 via USB-C
-3. Select the correct port under **Tools → Port**
-4. Set **Tools → USB CDC On Boot → Enabled** (needed for `USBSerial` debug output)
-5. Click **Upload**
-
-If the board doesn't appear in the port list, hold the BOOT button while plugging in.
-
----
-
-## Button controls
-
-| Action | Result |
-|--------|--------|
-| Button 14 (right) | Next aircraft |
-| Button 0 (left) | Previous aircraft |
-| Both buttons together | Toggle list / detail view |
-
----
-
-## Display layout
-
-**List view** (up to 7 rows):
+Find the correct URL by opening these addresses in your browser until one returns JSON:
 
 ```
-ADS-B       12 shown / 47 tracked
-──────────────────────────────────────
-KM   FLIGHT   ALT      ORIGIN  DEST  AIRLINE
- 4.2  EZY123  32000ft  LTN     BCN   easyJet
-12    BAW456  28500ft  LHR     JFK   British ...
-...
+http://YOUR_IP:8080/data/aircraft.json       ← most common
+http://YOUR_IP/dump1090-fa/data/aircraft.json
+http://YOUR_IP/skyaware/data/aircraft.json
+http://YOUR_IP/tar1090/data/aircraft.json
 ```
 
-**Detail view** (single aircraft):
+Replace `YOUR_IP` with the local IP address of your PiAware box (e.g. `192.168.1.50`). You can find this in your router's device list or by running `hostname -I` on the Pi.
 
-```
-EZY123                        ICAO: 3c6444
-──────────────────────────────────────────
-LTN  BCN
-->
-easyJet
-──────────────────────────────────────────
-ALTITUDE    DISTANCE    LAST SEEN
-32000ft     4.2km       2s
-──────────────────────────────────────────
-Pos: 52.9841, -1.1732
-Route: cached
+```cpp
+#define PIAWARE_URL  "http://192.168.1.50:8080/data/aircraft.json"
 ```
 
 ---
 
-## AeroAPI usage and costs
+### Home Coordinates
 
-Each cache miss triggers one AeroAPI call. The sketch fetches at most one uncached route per 5-second refresh cycle, so under normal conditions usage stays low. The route cache holds 40 entries in RAM and persists until the device resets.
+Set your home latitude and longitude — used to calculate distance from each aircraft to your location. Find yours at [latlong.net](https://www.latlong.net).
 
-The [AeroAPI Personal tier](https://www.flightaware.com/commercial/aeroapi/pricing) (free with limits) is generally sufficient for home use. Monitor your usage in the FlightAware dashboard if you're concerned.
+```cpp
+#define HOME_LAT  52.9717f
+#define HOME_LON  -1.1599f
+```
+
+---
+
+### FlightAware AeroAPI Key
+
+The AeroAPI is used to look up origin and destination airports from a flight's callsign.
+
+**As a PiAware feeder you receive $10 of free AeroAPI credit per month** — more than enough for a home display. However you need to sign up for AeroAPI separately from your feeder account:
+
+1. Go to [flightaware.com/aeroapi/portal](https://www.flightaware.com/aeroapi/portal)
+2. Sign in with your FlightAware account
+3. Create an API key
+4. Paste it into `config.h`
+
+```cpp
+#define AEROAPI_KEY  "your-key-here"
+```
+
+**How credit is used:**  
+Route lookups are cached on-device — each unique callsign is only looked up once per session. At one new lookup per 5-second refresh cycle, and with most aircraft staying in range for several minutes, typical usage is well within the free $10/month credit.
+
+---
+
+## Uploading
+
+1. Plug in the T-Display S3 via USB-C
+2. Hold the **BOOT** button on the device while clicking Upload in Arduino IDE
+3. Release BOOT once the upload starts
+4. The device will restart and show "PiAware Display / Connecting..."
+
+If the port doesn't appear, you may need the [CP210x driver](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers).
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Likely cause |
-|---------|-------------|
-| Screen stays blank | TFT_eSPI `User_Setup.h` not configured for T-Display S3 |
-| "WiFi failed!" on screen | Wrong SSID/password, or 5 GHz network (ESP32 is 2.4 GHz only) |
-| No aircraft shown | Wrong PiAware IP; check the URL in a browser first |
-| Routes all show `...` | AeroAPI key missing or invalid; check Serial Monitor output |
-| Upload fails | Try holding BOOT button on plug-in; check USB CDC setting |
+**"WiFi failed!" on startup**  
+Check SSID and password in `config.h`. Ensure your network is 2.4GHz.
 
-Serial debug output is available at 115200 baud via the Arduino IDE Serial Monitor.
+**List shows no aircraft**  
+Check the PiAware URL in `config.h` — open it in a browser on the same network to confirm it returns JSON. Check the Serial Monitor (115200 baud) for HTTP status codes.
+
+**Routes showing "..." indefinitely**  
+The AeroAPI lookup may be failing. Check your API key and that you have credit remaining at [flightaware.com/aeroapi/portal](https://www.flightaware.com/aeroapi/portal). Check the Serial Monitor for AeroAPI HTTP status codes.
+
+**Routes showing "---"**  
+The flight was looked up but no route data was found. This is normal for military aircraft, private flights, and some cargo operators that aren't in the AeroAPI database.
+
+**Distances look wrong**  
+Check your `HOME_LAT` and `HOME_LON` coordinates in `config.h`.
+
+---
+
+## Serial Monitor
+
+Connect at **115200 baud** to see debug output including HTTP status codes for both the PiAware feed and AeroAPI lookups, and cache hit/miss logging.
+
+---
+
+## How It Works
+
+1. On boot, the sketch fetches the aircraft list from your local PiAware receiver
+2. Aircraft are sorted by distance from your home coordinates
+3. For each visible aircraft with a callsign, a route lookup is queued to the FlightAware AeroAPI
+4. Route results are cached by callsign — subsequent refreshes reuse cached data
+5. Every 5 seconds the aircraft list is refreshed; one new uncached route lookup is made per cycle
+
+---
+
+## Credits
+
+- [FlightAware](https://www.flightaware.com) — PiAware and AeroAPI
+- [LilyGO](https://github.com/Xinyuan-LilyGO/T-Display-S3) — T-Display S3 hardware and TFT_eSPI library
 
 ---
 
 ## Licence
 
-MIT. Do what you like with it.
+MIT — do what you like with it.
