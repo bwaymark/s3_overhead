@@ -2,6 +2,8 @@
 
 A live ADS-B aircraft display for the **LilyGO T-Display S3** (ESP32-S3). Reads aircraft data from a local PiAware / dump1090 receiver and looks up flight routes via the FlightAware AeroAPI.
 
+![Flights](IMG_4380.jpeg)
+
 ---
 
 ## What It Shows
